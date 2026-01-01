@@ -1,0 +1,784 @@
+<!-- START OF FILE ai_studio_code - 2025-12-04T001500.000.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motion IO Director v18</title>
+    <style>
+        :root {
+            --bg-dark: #1e1e1e;
+            --panel-bg: #252526;
+            --header-bg: #333333;
+            --border: #3e3e42;
+            --accent: #0e639c;
+            --accent-hover: #1177bb;
+            --text-main: #cccccc;
+            --text-muted: #858585;
+            --highlight: #2ea043;
+            --block-bg: #2d2d30;
+            --sub-panel: #1b1b1c;
+        }
+
+        body {
+            font-family: 'Segoe UI', Inter, Roboto, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- LAYOUT GRID --- */
+        .app-shell {
+            display: grid;
+            /* Sidebar (550px) | Resizer | Main | Sidebar */
+            grid-template-columns: 550px 6px 1fr 300px;
+            grid-template-rows: 50px 1fr 25px;
+            height: 100%;
+        }
+
+        /* RESIZER HANDLE */
+        .resizer {
+            background-color: var(--border);
+            cursor: col-resize;
+            transition: background 0.2s;
+            z-index: 10;
+        }
+        .resizer:hover, .resizer.dragging { background-color: var(--accent); }
+
+        /* HEADER */
+        .header {
+            grid-column: 1 / -1;
+            background-color: var(--header-bg);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between; padding: 0 15px;
+        }
+
+        .brand { font-weight: 700; font-size: 16px; display:flex; align-items:center; gap:10px;}
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #666; transition: background 0.3s; }
+        
+        /* FOOTER */
+        .footer {
+            grid-column: 1 / -1;
+            background-color: var(--header-bg);
+            border-top: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 10px;
+            font-size: 11px; color: var(--text-muted); justify-content: space-between;
+        }
+
+        /* PANELS */
+        .sidebar-left, .sidebar-right, .main-stage {
+            padding: 15px; overflow-y: auto; 
+            display: flex; flex-direction: column; gap: 15px;
+        }
+        .sidebar-left { min-width: 300px; padding-bottom: 50px; } 
+        .sidebar-right { border-left: 1px solid var(--border); }
+        .main-stage { background: #1e1e1e; padding: 0; display:flex; flex-direction:column; border-left: 1px solid var(--border);}
+
+        h3 {
+            margin: 0 0 10px 0; font-size: 12px; text-transform: uppercase;
+            color: var(--text-muted); letter-spacing: 1px; font-weight: 600; border-bottom: 1px solid #333; padding-bottom: 5px;
+        }
+
+        h4 {
+            margin: 10px 0 5px 0; font-size: 11px; color: var(--accent); font-weight: 700;
+        }
+        
+        .preset-label {
+            font-size: 10px; color: #888; margin-bottom: 2px; display: block;
+        }
+
+        /* --- CONTROLS --- */
+        input[type="text"], input[type="number"], select {
+            background: #3c3c3c; border: 1px solid #3c3c3c; color: white;
+            padding: 6px; border-radius: 4px; width: 100%; box-sizing: border-box;
+            font-size: 12px; margin-bottom: 5px;
+        }
+        input:focus, select:focus { border-color: var(--accent); outline: none; }
+        input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+
+        button {
+            background: var(--accent); color: white; border: none;
+            padding: 8px 12px; border-radius: 4px; cursor: pointer;
+            font-size: 12px; font-weight: 600; transition: 0.2s;
+        }
+        button:hover { background: var(--accent-hover); }
+        button.secondary { background: #3e3e42; }
+        button.secondary:hover { background: #4e4e52; }
+        button.orange { background: #ce723b; }
+        button.orange:hover { background: #e0834d; }
+        
+        .row { display: flex; gap: 8px; margin-bottom: 5px; }
+        .col { flex: 1; }
+
+        /* --- SKETCH PAD --- */
+        .canvas-wrapper {
+            background: #222;
+            padding: 10px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            min-height: 200px;
+        }
+        
+        #drawingCanvas {
+            background: #fff; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            cursor: crosshair; 
+            touch-action: none; 
+            display: block;
+            width: 100%;
+            max-height: 600px; 
+            object-fit: contain;
+        }
+        
+        .timeline-controls { background: #2d2d30; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .preview-box {
+            width: 100px; height: 100px; border: 1px solid #444; margin-top: 5px; 
+            background-size: cover; background-position: center; background-repeat: no-repeat;
+            display: none; border-radius: 4px;
+        }
+
+        /* --- EXPORT PANEL --- */
+        .export-panel {
+            background: #252526; border: 1px solid var(--border);
+            padding: 15px; border-radius: 8px;
+        }
+        .sub-panel {
+            background: var(--sub-panel); padding: 10px; border-radius: 4px; margin-bottom: 10px;
+            border: 1px solid #333;
+        }
+        .check-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;
+        }
+        .check-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #ccc; }
+
+        /* --- TABS & BLOCKS --- */
+        .main-tabs { display: flex; background: var(--panel-bg); border-bottom: 1px solid var(--border); }
+        .tab-btn { padding: 10px 20px; background: transparent; color: #ccc; border-radius: 0; }
+        .tab-btn:hover { background: #333; }
+        .tab-btn.selected { background: #1e1e1e; color: white; border-top: 2px solid var(--accent); }
+        .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+        .tab-content.active { display: flex; }
+
+        .toolbar { padding: 10px; background: var(--panel-bg); border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
+        .block-container { padding: 20px; overflow-y: auto; flex: 1; }
+        .event-block { background: var(--block-bg); border-left: 4px solid var(--accent); border-radius: 4px; margin-bottom: 10px; padding: 10px; cursor: pointer; }
+        .event-block.selected { border-left-color: var(--highlight); background: #252526; }
+        .block-header { font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 8px; display: flex; justify-content: space-between; }
+        .block-prop-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+        .block-label { font-size: 11px; color: #888; width: 90px; flex-shrink: 0; }
+        .block-sub { margin-left: 10px; padding-left: 10px; border-left: 2px solid #444; margin-bottom: 5px; }
+
+        /* --- LOGS --- */
+        #logArea { font-family: 'Consolas', monospace; font-size: 11px; color: #ccc; flex: 1; overflow-y: auto; line-height: 1.4; }
+        #rawJsonArea { flex: 1; background: #1e1e1e; color: #d4d4d4; border: none; padding: 20px; font-family: 'Consolas', monospace; font-size: 13px; resize: none; outline: none; }
+        .log-entry { border-bottom: 1px solid #333; padding: 2px 0; }
+        .log-sent { color: #4ec9b0; } .log-info { color: #888; } .log-err { color: #f48771; }
+
+        /* Sliders */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: var(--text-main); cursor: pointer; margin-top: -4px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #444; border-radius: 2px; }
+
+        .drop-zone { border: 2px dashed #444; border-radius: 8px; padding: 30px; text-align: center; color: #666; cursor: pointer; margin: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="app-shell" id="appShell">
+    
+    <!-- HEADER -->
+    <div class="header">
+        <div class="brand">
+            <div id="socketDot" class="status-dot"></div>
+            <span>Motion IO Director v18</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <input type="text" id="wsUri" value="ws://localhost:8265" style="width:180px;">
+            <button onclick="initWebSocket()">Connect</button>
+        </div>
+    </div>
+
+    <!-- LEFT SIDEBAR -->
+    <div class="sidebar-left" style="background: var(--panel-bg);">
+        
+        <!-- STENCIL -->
+        <div style="border-bottom: 1px solid var(--border); padding-bottom: 15px;">
+            <h3>Global Stencil</h3>
+            <div class="row">
+                <input type="text" id="stencilPath" value="uploads/uploads_masks" placeholder="Server path...">
+                <button class="secondary" onclick="document.getElementById('stencilFile').click()">📂 Pick</button>
+            </div>
+            <div class="row">
+                <button class="secondary" onclick="sendStencilCmd()" style="flex:1;">📤 Send to Motion IO</button>
+            </div>
+            <input type="file" id="stencilFile" style="display:none" onchange="handleStencilSelect(this)">
+            <div id="stencilPreview" class="preview-box"></div>
+        </div>
+
+        <!-- SKETCH PAD -->
+        <div style="flex:1; display:flex; flex-direction: column;">
+            <h3>Sketch Pad & Canvas</h3>
+            
+            <div class="row">
+                <div class="col">
+                    <span class="preset-label">Square (1:1)</span>
+                    <div style="display:flex; gap:4px;">
+                        <button class="secondary" style="flex:1; padding:6px 2px;" onclick="applyPreset(500, 500)">500</button>
+                        <button class="secondary" style="flex:1; padding:6px 2px;" onclick="applyPreset(1080, 1080)">1080</button>
+                        <button class="secondary" style="flex:1; padding:6px 2px;" onclick="applyPreset(2048, 2048)">2K</button>
+                    </div>
+                </div>
+                <div class="col">
+                    <span class="preset-label">Video (16:9)</span>
+                    <div style="display:flex; gap:4px;">
+                        <button class="secondary" style="flex:1; padding:6px 2px;" onclick="applyPreset(1920, 1080)">FHD</button>
+                        <button class="secondary" style="flex:1; padding:6px 2px;" onclick="applyPreset(3840, 2160)">4K</button>
+                    </div>
+                </div>
+            </div>
+            <div class="row" style="margin-bottom:10px;">
+                 <div class="col">
+                    <span class="preset-label">Print / Paper</span>
+                    <div style="display:flex; gap:4px;">
+                        <button class="secondary" style="flex:1; padding:6px 2px;" onclick="applyPreset(2480, 3508)">A4</button>
+                        <button class="secondary" style="flex:1; padding:6px 2px;" onclick="applyPreset(2550, 3300)">Letter</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col"><label style="font-size:10px; color:#888;">Width</label><input type="number" id="targetW" value="1920" onchange="manualRes()"></div>
+                <div class="col"><label style="font-size:10px; color:#888;">Height</label><input type="number" id="targetH" value="1080" onchange="manualRes()"></div>
+                <div style="display:flex; align-items:flex-end; padding-bottom:5px;">
+                    <button class="secondary" onclick="swapDims()">⟳</button>
+                </div>
+            </div>
+
+            <button class="btn-primary" style="margin-bottom:15px; border:1px solid var(--accent);" onclick="sendNewArtwork()">
+                📄 Create & Sync Page in Rebelle
+            </button>
+
+            <!-- CANVAS -->
+            <div class="canvas-wrapper">
+                <canvas id="drawingCanvas" width="1920" height="1080" oncontextmenu="return false;"></canvas>
+            </div>
+            
+            <!-- TIMELINE -->
+            <div class="timeline-controls">
+                <div class="row" style="justify-content: space-between; margin-bottom: 5px;">
+                    <span style="font-size:11px; color:#888;">Timeline</span>
+                    <span id="frameCounter" style="font-size:11px; font-weight:bold;">1 / 1</span>
+                </div>
+                <input type="range" id="frameScrubber" min="1" max="1" value="1" oninput="scrubToFrame(this.value)">
+                <div class="row" style="margin-top:5px;">
+                    <button class="secondary col" onclick="addFrame()">+ Frame</button>
+                    <button class="secondary col" onclick="clearCurrentFrame()">Clear</button>
+                </div>
+            </div>
+
+            <div class="row" style="margin-top:10px; align-items:center;">
+                <label style="font-size:11px; color:#888;">Send Rate:</label>
+                <input type="range" min="0" max="60" value="16" oninput="updateThrottle(this.value)">
+                <span id="throtDisp" style="font-size:11px; width:45px; text-align:right;">60 FPS</span>
+            </div>
+        </div>
+
+        <!-- EXPORT PANEL -->
+        <div class="export-panel">
+            <h3>Export & Save</h3>
+
+            <!-- LOCAL SAVE -->
+            <div class="sub-panel">
+                <h4 style="margin-top:0;">Local Sketchpad</h4>
+                <div class="row">
+                    <button class="secondary col" onclick="downloadSketchPNG()">💾 Save PNG</button>
+                    <button class="secondary col" onclick="downloadSketchSVG()">✒️ Save SVG</button>
+                </div>
+            </div>
+
+            <!-- MOTION IO SAVE -->
+            <div class="sub-panel" style="margin-bottom:0;">
+                <h4 style="margin-top:0;">Rebelle Motion IO</h4>
+                
+                <label style="font-size:10px; color:#888;">Output Folder (Server Path) <span style="color:var(--highlight); margin-left:5px; display:none;" id="pathSavedMsg">Saved!</span></label>
+                <div class="row">
+                    <input type="text" id="savePath" value="C:/tmp/export_01" onchange="savePathToStorage()">
+                    <button class="secondary" title="Pick Folder" onclick="document.getElementById('folderPicker').click()">📂</button>
+                    <button class="secondary" title="Copy Path" onclick="copyPathToClipboard()">📋</button>
+                </div>
+                <!-- Hidden folder picker for string generation -->
+                <input type="file" id="folderPicker" webkitdirectory style="display:none" onchange="handleFolderSelect(this)">
+
+                <div class="row">
+                    <div class="col">
+                        <label style="font-size:10px; color:#888;">File Name</label>
+                        <input type="text" id="saveName" value="artwork_layer">
+                    </div>
+                    <div class="col">
+                        <label style="font-size:10px; color:#888;">Format</label>
+                        <select id="exportFormat">
+                            <option value="reb">Rebelle 8 (*.reb)</option>
+                            <option value="psd">Photoshop (*.psd)</option>
+                            <option value="png" selected>PNG (*.png)</option>
+                            <option value="jpg">JPEG (*.jpg)</option>
+                            <option value="bmp">BMP (*.bmp)</option>
+                            <option value="tif">TIFF (*.tif)</option>
+                            <option value="webp">WEBP (*.webp)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label style="font-size:10px; color:#888; margin-top:5px; display:block;">Channels</label>
+                <div class="check-grid">
+                    <label class="check-item"><input type="checkbox" id="chk_rgba" checked> RGBA</label>
+                    <label class="check-item"><input type="checkbox" id="chk_velo"> Velocity</label>
+                    <label class="check-item"><input type="checkbox" id="chk_press"> Pressure</label>
+                    <label class="check-item"><input type="checkbox" id="chk_height"> Height</label>
+                    <label class="check-item"><input type="checkbox" id="chk_wet"> Wet</label>
+                    <label class="check-item"><input type="checkbox" id="chk_pigment"> Pigment</label>
+                </div>
+                
+                <button class="orange" style="width:100%; margin-top:10px;" onclick="sendSaveCmd()">📤 Save via Motion IO</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- RESIZER -->
+    <div class="resizer" id="resizer"></div>
+
+    <!-- CENTER PANEL -->
+    <div class="main-stage">
+        <div class="main-tabs">
+            <button id="btn-visual" class="tab-btn selected" onclick="switchView('visual', this)">Visual Blocks</button>
+            <button id="btn-raw" class="tab-btn" onclick="switchView('raw', this)">Raw JSON</button>
+        </div>
+
+        <!-- VISUAL BLOCKS -->
+        <div id="view-visual" class="tab-content active">
+            <div class="toolbar">
+                <button class="secondary" onclick="document.getElementById('jsonFile').click()">📂 Import</button>
+                <button class="secondary" onclick="exportJSON()">💾 Export</button>
+                <div style="flex:1;"></div>
+                <button class="secondary" onclick="clearAllBlocks()">🗑 Clear</button>
+            </div>
+            <div id="dropZone" class="drop-zone" onclick="document.getElementById('jsonFile').click()">
+                <h3>Drag & Drop JSON</h3>
+            </div>
+            <input type="file" id="jsonFile" style="display:none" accept=".json,.txt">
+            <div id="blockList" class="block-container"></div>
+        </div>
+
+        <!-- RAW JSON -->
+        <div id="view-raw" class="tab-content">
+            <textarea id="rawJsonArea" spellcheck="false" placeholder="Paste JSON here... (Comments // are supported)"></textarea>
+            <div class="toolbar" style="border-top:1px solid var(--border); border-bottom:none;">
+                <button class="secondary" onclick="visualizeRaw()">✨ Visualize as Blocks</button>
+                <div style="flex:1;"></div>
+                <button onclick="sendRawJson()">▶ Send Raw JSON</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT SIDEBAR -->
+    <div class="sidebar-right" style="background: var(--panel-bg);">
+        <div>
+            <h3>Execution</h3>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <button class="secondary" onclick="sendSelected()">▶ Send Selected Blocks</button>
+                <button class="secondary" onclick="sendAll()">▶▶ Send All (Sequence)</button>
+            </div>
+            <div class="row" style="margin-top:10px; align-items:center;">
+                <label style="font-size:11px;">Delay (ms)</label>
+                <input type="number" id="seqDelay" value="10">
+            </div>
+            <div id="progressBar" style="height:4px; background:#333; margin-top:10px; border-radius:2px;">
+                <div id="progressFill" style="height:100%; width:0%; background:var(--accent); transition: width 0.1s;"></div>
+            </div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction: column;">
+            <h3>Console Output</h3>
+            <div id="logArea"></div>
+            <button class="secondary" style="margin-top:5px;" onclick="document.getElementById('logArea').innerHTML=''">Clear Log</button>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        <span id="connStatus">Disconnected</span>
+        <span id="liveStatus" style="color:var(--accent);">Idle</span>
+    </div>
+
+</div>
+
+<script>
+    // --- APP STATE ---
+    let batchQueue = [];
+    let selectedIndices = new Set();
+    let websocket = null;
+    let throttleLimit = 16;
+    let lastSentTime = 0;
+    
+    // --- SKETCH STATE ---
+    let sketchFrames = [ [] ];
+    let currentFrameIdx = 0;
+    let isDrawing = false;
+    let points = []; 
+
+    function init() {
+        manualRes(); // Init Preview
+        setupDragDrop();
+        updateFrameUI();
+        initResizer();
+        loadPathFromStorage(); // Restore saved path
+    }
+
+    // --- RESIZER ---
+    function initResizer() {
+        const resizer = document.getElementById('resizer');
+        const shell = document.getElementById('appShell');
+        resizer.addEventListener('mousedown', function(e) {
+            e.preventDefault(); resizer.classList.add('dragging');
+            window.addEventListener('mousemove', resize); window.addEventListener('mouseup', stopResize);
+        });
+        function resize(e) {
+            let newWidth = e.clientX;
+            if(newWidth < 300) newWidth = 300; if(newWidth > window.innerWidth - 350) newWidth = window.innerWidth - 350;
+            shell.style.gridTemplateColumns = `${newWidth}px 6px 1fr 300px`;
+        }
+        function stopResize() { resizer.classList.remove('dragging'); window.removeEventListener('mousemove', resize); window.removeEventListener('mouseup', stopResize); }
+    }
+
+    // --- WEBSOCKET ---
+    function initWebSocket() {
+        const uri = document.getElementById('wsUri').value;
+        log(`Connecting to ${uri}...`, 'log-info');
+        document.getElementById('socketDot').style.background = 'orange';
+        document.getElementById('connStatus').innerText = "Connecting...";
+        if(websocket) websocket.close();
+        try {
+            websocket = new WebSocket(uri);
+            websocket.onopen = () => { log("Connected", 'log-info'); document.getElementById('socketDot').style.background = '#2ea043'; document.getElementById('connStatus').innerText = "Connected"; };
+            websocket.onclose = () => { log("Disconnected", 'log-err'); document.getElementById('socketDot').style.background = '#8b0000'; document.getElementById('connStatus').innerText = "Disconnected"; };
+            websocket.onerror = () => log("Connection Error", 'log-err');
+        } catch(e) { log(e, 'log-err'); }
+    }
+
+    function send(obj) {
+        if(!websocket || websocket.readyState !== 1) return;
+        const str = JSON.stringify(obj);
+        websocket.send(str);
+        if(str.indexOf("POINTER_MOVE") === -1) log(`> ${str}`, 'log-sent');
+        else if(obj.pos) document.getElementById('liveStatus').innerText = `X: ${obj.pos.x} Y: ${obj.pos.y}`;
+    }
+
+    // --- SKETCH PAD & RESOLUTION ---
+    const canvas = document.getElementById('drawingCanvas');
+    const ctx = canvas.getContext('2d');
+    let lastPos = {x:0, y:0};
+
+    function applyPreset(w, h) {
+        document.getElementById('targetW').value = w;
+        document.getElementById('targetH').value = h;
+        manualRes();
+        log(`Preset Applied: ${w}x${h} (Click 'Create & Sync' to update Rebelle)`, 'log-info');
+    }
+
+    function swapDims() {
+        let w = document.getElementById('targetW').value;
+        let h = document.getElementById('targetH').value;
+        document.getElementById('targetW').value = h;
+        document.getElementById('targetH').value = w;
+        manualRes();
+    }
+
+    function manualRes() {
+        const w = parseInt(document.getElementById('targetW').value);
+        const h = parseInt(document.getElementById('targetH').value);
+        const ratio = h / w;
+        
+        // High internal res for sharpness
+        canvas.width = 1920; 
+        canvas.height = 1920 * ratio; 
+        
+        canvas.style.height = 'auto';
+        canvas.style.aspectRatio = `${w}/${h}`;
+        
+        redrawCanvas();
+    }
+
+    function sendNewArtwork() {
+        const w = parseInt(document.getElementById('targetW').value);
+        const h = parseInt(document.getElementById('targetH').value);
+        // This command ensures Rebelle matches the app's resolution
+        send({ event_type: "NEW_ARTWORK", width: w, height: h });
+        log(`Sent NEW_ARTWORK: ${w}x${h} to sync Rebelle Canvas`, 'log-info');
+    }
+
+    // --- LOCAL SAVING (SKETCHPAD) ---
+    function downloadSketchPNG() {
+        const link = document.createElement('a');
+        link.download = `sketchpad_${Date.now()}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+    }
+
+    function downloadSketchSVG() {
+        const w = parseInt(document.getElementById('targetW').value);
+        const h = parseInt(document.getElementById('targetH').value);
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvas.width} ${canvas.height}" width="${w}" height="${h}">`;
+        svg += `<rect width="100%" height="100%" fill="white"/>`;
+        svg += `<g stroke="black" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">`;
+        
+        const strokes = sketchFrames[currentFrameIdx];
+        if (strokes && strokes.length > 0) {
+            let pathData = "";
+            strokes.forEach(pt => {
+                if (pt.type === 'down') pathData += ` M ${pt.x} ${pt.y}`;
+                else if (pt.type === 'move') pathData += ` L ${pt.x} ${pt.y}`;
+            });
+            svg += `<path d="${pathData}" />`;
+        }
+        
+        svg += `</g></svg>`;
+        const blob = new Blob([svg], {type: 'image/svg+xml'});
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `sketchpad_${Date.now()}.svg`;
+        link.click();
+    }
+
+    // --- MOTION IO SAVING (REMOTE) ---
+    function loadPathFromStorage() {
+        const saved = localStorage.getItem('motion_io_save_path');
+        if(saved) document.getElementById('savePath').value = saved;
+    }
+
+    function savePathToStorage() {
+        const val = document.getElementById('savePath').value;
+        localStorage.setItem('motion_io_save_path', val);
+        const msg = document.getElementById('pathSavedMsg');
+        msg.style.display = 'inline';
+        setTimeout(() => msg.style.display = 'none', 1500);
+    }
+
+    function handleFolderSelect(input) {
+        if(input.files && input.files.length > 0) {
+            alert("Browser Security Notice: We cannot auto-detect the absolute system path. Please verify the path in the text box.");
+        }
+    }
+
+    function copyPathToClipboard() {
+        const path = document.getElementById('savePath').value;
+        navigator.clipboard.writeText(path).then(() => {
+            log("Path copied to clipboard", "log-info");
+        });
+    }
+
+    function sendSaveCmd() {
+        savePathToStorage(); // Ensure saved
+
+        // Construct Path
+        let basePath = document.getElementById('savePath').value.trim();
+        let fileName = document.getElementById('saveName').value.trim();
+        let format = document.getElementById('exportFormat').value;
+        
+        // Normalize slashes
+        basePath = basePath.replace(/\\/g, '/');
+        if(basePath.endsWith('/')) basePath = basePath.slice(0, -1);
+        
+        const fullPathStart = `${basePath}/${fileName}`;
+        
+        const payload = { event_type: "SAVE" };
+        const maps = {
+            'chk_rgba': 'rgba_dry', 'chk_velo': 'velocity', 'chk_press': 'pressure',
+            'chk_height': 'height', 'chk_wet': 'wet', 'chk_pigment': 'pigment'
+        };
+        
+        let count = 0;
+        for (const [id, key] of Object.entries(maps)) {
+            if(document.getElementById(id).checked) {
+                // If .reb or .psd is selected, users often want the main file, but Motion IO usually exports maps.
+                // We will append the channel name to avoid overwriting unless the user is aware.
+                payload[key] = {
+                    "filename": `${fullPathStart}_${key}.${format}`, 
+                    "options": "tiled_mipmapped"
+                };
+                count++;
+            }
+        }
+        
+        if(count > 0) {
+            send(payload);
+            log(`Sent SAVE command (${format.toUpperCase()}) to: ${basePath}`, 'log-info');
+        } else {
+            alert("Select at least one channel to export.");
+        }
+    }
+
+    // --- DRAWING LOGIC ---
+    function getCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        return { x, y };
+    }
+
+    canvas.addEventListener('pointerdown', e => {
+        isDrawing = true;
+        canvas.setPointerCapture(e.pointerId);
+        const p = getCoords(e);
+        lastPos = p;
+        points = [p];
+        sketchFrames[currentFrameIdx].push({type:'down', x:p.x, y:p.y});
+        
+        const tW = parseInt(document.getElementById('targetW').value);
+        const tH = parseInt(document.getElementById('targetH').value);
+        const normX = p.x / canvas.width; 
+        const normY = p.y / canvas.height;
+        
+        send({ event_type: "POINTER_PRESS", pos: {x: Math.round(normX*tW), y: Math.round(normY*tH)}, pressure: e.pressure || 1.0, selection_mask: getStencil() });
+    });
+
+    canvas.addEventListener('pointermove', e => {
+        if(!isDrawing) return;
+        const p = getCoords(e);
+        points.push(p);
+        sketchFrames[currentFrameIdx].push({type:'move', x:p.x, y:p.y});
+
+        // Smooth draw
+        if(points.length > 2) {
+            ctx.beginPath(); ctx.strokeStyle = "black"; ctx.lineWidth = 2; ctx.lineCap = "round";
+            const p1 = points[points.length - 3]; const p2 = points[points.length - 2];
+            ctx.moveTo(p1.x, p1.y); 
+            const mid = { x: (p1.x + p2.x)/2, y: (p1.y + p2.y)/2 };
+            ctx.quadraticCurveTo(p1.x, p1.y, mid.x, mid.y);
+            ctx.lineTo(p2.x, p2.y); ctx.stroke();
+        }
+        lastPos = p; // Keep tracking last pos
+
+        const now = Date.now();
+        if(throttleLimit === 0 || (now - lastSentTime > throttleLimit)) {
+             const tW = parseInt(document.getElementById('targetW').value);
+             const tH = parseInt(document.getElementById('targetH').value);
+             send({ event_type: "POINTER_MOVE", pos: {x: Math.round((p.x/canvas.width)*tW), y: Math.round((p.y/canvas.height)*tH)}, pressure: e.pressure || 1.0, selection_mask: getStencil() });
+            lastSentTime = now;
+        }
+    });
+
+    canvas.addEventListener('pointerup', e => {
+        if(isDrawing) {
+            isDrawing = false;
+            sketchFrames[currentFrameIdx].push({type:'up'});
+            
+            // Release at LAST KNOWN position (fix fly-off)
+            const tW = parseInt(document.getElementById('targetW').value);
+            const tH = parseInt(document.getElementById('targetH').value);
+            const finalX = Math.round((lastPos.x / canvas.width) * tW);
+            const finalY = Math.round((lastPos.y / canvas.height) * tH);
+
+            send({ event_type: "POINTER_RELEASE", pos: {x: finalX, y: finalY}, pressure: 0.0, selection_mask: getStencil() });
+        }
+    });
+
+    function updateFrameUI() {
+        document.getElementById('frameCounter').innerText = `${parseInt(currentFrameIdx)+1} / ${sketchFrames.length}`;
+        const scrub = document.getElementById('frameScrubber'); scrub.max = sketchFrames.length; scrub.value = parseInt(currentFrameIdx) + 1;
+    }
+    function addFrame() { sketchFrames.push([]); currentFrameIdx = sketchFrames.length - 1; redrawCanvas(); updateFrameUI(); }
+    function scrubToFrame(val) { currentFrameIdx = parseInt(val) - 1; redrawCanvas(); updateFrameUI(); }
+    function clearCurrentFrame() { sketchFrames[currentFrameIdx] = []; redrawCanvas(); }
+    function redrawCanvas() {
+        ctx.fillStyle = "white"; ctx.fillRect(0,0,canvas.width, canvas.height);
+        const strokes = sketchFrames[currentFrameIdx]; if(!strokes || !strokes.length) return;
+        ctx.strokeStyle = "black"; ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        let drawing = false; ctx.beginPath();
+        strokes.forEach((pt) => {
+            if(pt.type === 'down') { ctx.moveTo(pt.x, pt.y); drawing=true; }
+            else if(pt.type === 'move' && drawing) { ctx.lineTo(pt.x, pt.y); }
+            else if(pt.type === 'up') { drawing=false; }
+        });
+        ctx.stroke();
+    }
+
+    // --- PARSING & BLOCKS ---
+    function parseAndPopulate(rawString) {
+        let val = rawString.replace(/\/\/.*$/gm, '').replace(/\\/g, "/");
+        let json = JSON.parse(val);
+        batchQueue = [];
+        if (json.frames) { json.frames.forEach(f => { if(f.events) f.events.forEach(ev => batchQueue.push(ev)); else if(f.event_type) batchQueue.push(f); }); } 
+        else if(Array.isArray(json)) { batchQueue = json; } else { batchQueue.push(json); }
+        renderBlocks();
+        document.getElementById('rawJsonArea').value = JSON.stringify(batchQueue, null, 2);
+        return batchQueue.length;
+    }
+
+    function renderBlocks() {
+        const container = document.getElementById('blockList'); container.innerHTML = ''; selectedIndices.clear();
+        batchQueue.forEach((event, index) => {
+            const el = document.createElement('div'); el.className = 'event-block';
+            el.onclick = (e) => { if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') { if(selectedIndices.has(index)) { selectedIndices.delete(index); el.classList.remove('selected'); } else { selectedIndices.add(index); el.classList.add('selected'); } } };
+            let innerHTML = `<div class="block-header">${event.event_type} <span style="font-weight:400; color:#666">#${index}</span></div>`;
+            const numIn = (key, lbl, step=1) => `<div class="block-prop-row"><span class="block-label">${lbl}</span><input type="number" step="${step}" value="${getValue(event, key)}" onchange="updateDeep(${index}, '${key}', this.value)"></div>`;
+            const txtIn = (key, lbl) => `<div class="block-prop-row"><span class="block-label">${lbl}</span><input type="text" value="${getValue(event, key)}" onchange="updateDeep(${index}, '${key}', this.value)"></div>`;
+            const boolIn = (key, lbl) => `<div class="block-prop-row"><span class="block-label">${lbl}</span><input type="checkbox" ${getValue(event, key) ? 'checked' : ''} onchange="updateDeep(${index}, '${key}', this.checked)"></div>`;
+
+            if(event.event_type === "SIMULATION") innerHTML += numIn('repeats', 'Repeats');
+            else if(event.event_type === "NEW_ARTWORK") {
+                innerHTML += numIn('width', 'Width'); innerHTML += numIn('height', 'Height'); innerHTML += numIn('dpi', 'DPI'); innerHTML += txtIn('units', 'Units');
+                innerHTML += `<div class="block-sub"><div class="block-sub-title">Paper Settings</div>`;
+                innerHTML += txtIn('paper.preset', 'Preset'); innerHTML += boolIn('paper.deckled_edges', 'Deckled'); innerHTML += numIn('paper.paper_scale', 'Scale'); innerHTML += getColorInput(index, 'paper.color', event.paper?.color); innerHTML += `</div>`;
+            }
+            else if(event.event_type === "SET_ENGINE_PARAMS") {
+                const params = ['absorbency','re_wet','texture_influence','edge_darkening','drip_size','drip_length','impasto_depth','gloss','paper_texture','paint_texture'];
+                params.forEach(p => { innerHTML += numIn(p, p.replace('_', ' ')); }); innerHTML += boolIn('create_drips', 'Create Drips');
+            }
+            else if(event.event_type.includes("POINTER")) {
+                if(!event.pos) event.pos = {x:0, y:0}; innerHTML += numIn('pos.x', 'X'); innerHTML += numIn('pos.y', 'Y');
+                innerHTML += `<div class="block-prop-row"><span class="block-label">Press</span><input type="range" min="0" max="1" step="0.01" value="${event.pressure || 0.5}" oninput="updateDeep(${index}, 'pressure', this.value)"></div>`;
+            }
+            else if(event.event_type === "SET_BRUSH") {
+                innerHTML += txtIn('tool', 'Tool'); innerHTML += txtIn('preset', 'Preset'); innerHTML += numIn('size', 'Size'); innerHTML += numIn('opacity', 'Opacity'); innerHTML += numIn('water', 'Water'); innerHTML += getColorInput(index, 'color', event.color);
+            }
+            else if(event.event_type === "SET_CANVAS_TILT") { innerHTML += numIn('tilt.x', 'Tilt X', 0.01); innerHTML += numIn('tilt.y', 'Tilt Y', 0.01); }
+            else if(event.event_type === "SAVE") {
+                innerHTML += `<div class="block-prop-row"><span class="block-label">Note</span><span style="font-size:11px;color:#888;">Save Block (Edit via Raw)</span></div>`;
+            }
+            else { innerHTML += `<div class="block-prop-row"><textarea style="background:#333; color:#ccc; border:1px solid #444; width:100%; height:60px;" onchange="updateRawBlock(${index}, this.value)">${JSON.stringify(event, null, 2)}</textarea></div>`; }
+            el.innerHTML = innerHTML; container.appendChild(el);
+        });
+    }
+
+    function getValue(obj, path) { return path.split('.').reduce((o, k) => (o || {})[k], obj) || ''; }
+    function updateDeep(idx, path, val) { let obj = batchQueue[idx]; const keys = path.split('.'); const last = keys.pop(); keys.forEach(k => { if(!obj[k]) obj[k] = {}; obj = obj[k]; }); if(val === true || val === false) obj[last] = val; else obj[last] = isNaN(val) ? val : parseFloat(val); document.getElementById('rawJsonArea').value = JSON.stringify(batchQueue, null, 2); }
+    function getColorInput(idx, path, colorObj) { const r = Math.round(colorObj?.r || 0); const g = Math.round(colorObj?.g || 0); const b = Math.round(colorObj?.b || 0); return `<div class="block-prop-row"><span class="block-label">Color</span><input type="number" placeholder="R" value="${r}" style="width:30px" onchange="updateDeep(${idx}, '${path}.r', this.value)"><input type="number" placeholder="G" value="${g}" style="width:30px" onchange="updateDeep(${idx}, '${path}.g', this.value)"><input type="number" placeholder="B" value="${b}" style="width:30px" onchange="updateDeep(${idx}, '${path}.b', this.value)"></div>`; }
+    function updateRawBlock(idx, txt) { try { batchQueue[idx] = JSON.parse(txt); document.getElementById('rawJsonArea').value = JSON.stringify(batchQueue, null, 2); } catch(e) {} }
+
+    // --- OTHER HELPERS ---
+    function visualizeRaw() { try { const count = parseAndPopulate(document.getElementById('rawJsonArea').value); log(`Visualized ${count} events`, 'log-info'); document.getElementById('dropZone').style.display = 'none'; switchView('visual', document.getElementById('btn-visual')); } catch(e) { alert("Invalid JSON: " + e.message); } }
+    function sendRawJson() { try { let val = document.getElementById('rawJsonArea').value.replace(/\/\/.*$/gm, ''); const obj = JSON.parse(val); if(Array.isArray(obj)) sendSequence(obj); else send(obj); } catch(e) { alert("Invalid JSON: " + e.message); } }
+    function setupDragDrop() { const drop = document.getElementById('dropZone'); drop.addEventListener('dragover', e => { e.preventDefault(); drop.style.borderColor = '#0e639c'; }); drop.addEventListener('dragleave', e => { drop.style.borderColor = '#444'; }); drop.addEventListener('drop', e => { e.preventDefault(); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); }); document.getElementById('jsonFile').addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); }); }
+    function loadFile(file) { const reader = new FileReader(); reader.onload = e => { try { const count = parseAndPopulate(e.target.result); log(`Loaded ${count} events`, 'log-info'); document.getElementById('dropZone').style.display = 'none'; } catch(err) { alert("JSON Error: " + err.message); } }; reader.readAsText(file); }
+    function switchView(viewName, btn) { document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active')); document.getElementById('view-' + viewName).classList.add('active'); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('selected')); btn.classList.add('selected'); }
+    function updateThrottle(val) { throttleLimit = parseInt(val); document.getElementById('throtDisp').innerText = (throttleLimit === 0) ? "Max" : Math.round(1000/throttleLimit) + " FPS"; }
+    function clearAllBlocks() { batchQueue = []; renderBlocks(); document.getElementById('rawJsonArea').value = ""; document.getElementById('dropZone').style.display = 'block'; }
+    async function sendSequence(items) { const delay = parseInt(document.getElementById('seqDelay').value) || 20; const bar = document.getElementById('progressFill'); const stencil = document.getElementById('stencilPath').value; for(let i=0; i<items.length; i++) { let evt = items[i]; if((evt.event_type.includes('POINTER') || evt.event_type === 'LOAD') && stencil) { if(!evt.selection_mask) evt.selection_mask = {}; evt.selection_mask.filename = stencil; } send(evt); bar.style.width = ((i+1) / items.length * 100) + "%"; await new Promise(r => setTimeout(r, delay)); } setTimeout(() => bar.style.width = "0%", 1000); }
+    function sendAll() { if(batchQueue.length) sendSequence(batchQueue); else alert("No events."); }
+    function sendSelected() { if(!selectedIndices.size) return alert("Select blocks first."); const indices = Array.from(selectedIndices).sort((a,b) => a-b); sendSequence(indices.map(i => batchQueue[i])); }
+    function getStencil() { const val = document.getElementById('stencilPath').value.trim(); return val ? { filename: val } : null; }
+    function handleStencilSelect(input) { if(input.files[0]) { document.getElementById('stencilPath').value = "uploads/" + input.files[0].name; const url = URL.createObjectURL(input.files[0]); const prev = document.getElementById('stencilPreview'); prev.style.display = 'block'; prev.style.backgroundImage = `url(${url})`; } }
+    function sendStencilCmd() { const s = getStencil(); if(s) send({ event_type: "LOAD", filename: s.filename }); else alert("No stencil path"); }
+    function log(msg, cls) { const div = document.createElement('div'); div.className = "log-entry " + cls; div.innerText = typeof msg === 'object' ? JSON.stringify(msg) : msg; const area = document.getElementById('logArea'); area.appendChild(div); area.scrollTop = area.scrollHeight; }
+    
+    init();
+</script>
+</body>
+</html>
